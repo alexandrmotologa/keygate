@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/alexandrmotologa/keygate/internal/storage"
@@ -286,6 +287,26 @@ func (v *Validator) InvalidateByID(keyID string) {
 			v.idToHashMap.Delete(keyID)
 		}
 	}
+}
+
+// RecordSuccessUsage atomically increments usage count both in memory and triggers DB persistence.
+func (v *Validator) RecordSuccessUsage(ctx context.Context, apiKey *storage.APIKey) {
+	if apiKey == nil {
+		return
+	}
+	atomic.AddInt64(&apiKey.TotalRequests, 1)
+	now := time.Now().UTC()
+	apiKey.LastUsedAt = &now
+
+	if apiKey.MaxUses > 0 && apiKey.TotalRequests >= int64(apiKey.MaxUses) {
+		v.InvalidateByID(apiKey.ID)
+	}
+
+	go func(id string, t time.Time) {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = v.db.IncrementKeyUsage(bgCtx, id, t)
+	}(apiKey.ID, now)
 }
 
 // InvalidateWorkspaceSalt clears salt cache for a workspace.

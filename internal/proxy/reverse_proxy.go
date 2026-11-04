@@ -185,13 +185,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 6. Record usage metrics
 	latency := time.Since(start)
 	p.emitEvent(apiKey.ID, apiKey.WorkspaceID, rw.statusCode, latency, clientIP, r.URL.Path, r.Method)
-
-	// Asynchronously increment DB key usage counter
-	go func(id string, t time.Time) {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = p.db.IncrementKeyUsage(bgCtx, id, t)
-	}(apiKey.ID, time.Now().UTC())
+	p.validator.RecordSuccessUsage(r.Context(), apiKey)
 }
 
 func (p *Proxy) emitEvent(keyID, workspaceID string, statusCode int, duration time.Duration, clientIP, path, method string) {

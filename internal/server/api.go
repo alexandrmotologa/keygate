@@ -177,12 +177,7 @@ func (a *API) handleVerifyKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.emitEvent(r.Context(), apiKey.ID, apiKey.WorkspaceID, http.StatusOK, time.Since(start), req.ClientIP, r.URL.Path, r.Method)
-
-	go func(id string) {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = a.db.IncrementKeyUsage(bgCtx, id, time.Now().UTC())
-	}(apiKey.ID)
+	a.validator.RecordSuccessUsage(r.Context(), apiKey)
 
 	a.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"valid":       true,

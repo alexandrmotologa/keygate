@@ -242,6 +242,7 @@ func keyCreate(args []string) {
 	owner := fs.String("owner", "usr_cli", "Owner ID")
 	tier := fs.String("tier", "pro", "Rate limit tier (free, pro, enterprise)")
 	limit := fs.Int("limit", 0, "Custom rate limit per window")
+	maxUses := fs.Int("max-uses", 0, "Lifetime usage quota (0 for unlimited)")
 	scopesStr := fs.String("scopes", "", "Comma-separated scopes")
 	dbPath := fs.String("db", "./keygate.db", "Database path")
 	_ = fs.Parse(args)
@@ -297,6 +298,7 @@ func keyCreate(args []string) {
 		RateLimit:    finalLimit,
 		RateDuration: tierConfig.Duration,
 		Burst:        tierConfig.Burst,
+		MaxUses:      *maxUses,
 		Scopes:       scopes,
 		Enabled:      true,
 		CreatedAt:    now,
@@ -308,11 +310,23 @@ func keyCreate(args []string) {
 		os.Exit(1)
 	}
 
+	_ = db.RecordAuditLog(ctx, &storage.AuditLog{
+		WorkspaceID: apiKey.WorkspaceID,
+		Actor:       "cli:" + *owner,
+		Action:      "key.created",
+		TargetID:    apiKey.ID,
+		Details:     map[string]string{"name": apiKey.Name, "tier": apiKey.Tier, "source": "cli"},
+		Timestamp:   now,
+	})
+
 	fmt.Println("API Key Successfully Created:")
 	fmt.Printf("  Key ID:     %s\n", apiKey.ID)
 	fmt.Printf("  Plaintext:  %s\n", gen.RawKey)
 	fmt.Printf("  Tier:       %s (%d req/%ds)\n", apiKey.Tier, apiKey.RateLimit, apiKey.RateDuration)
 	fmt.Printf("  Workspace:  %s\n", apiKey.WorkspaceID)
+	if apiKey.MaxUses > 0 {
+		fmt.Printf("  Max Uses:   %d\n", apiKey.MaxUses)
+	}
 	fmt.Printf("  Owner:      %s\n", apiKey.OwnerID)
 	fmt.Println("\nNote: The plaintext key cannot be displayed again.")
 }
@@ -348,6 +362,12 @@ func keyVerify(args []string) {
 		RawKey:      *rawKey,
 		WorkspaceID: *wsID,
 	})
+
+	if res.Valid && res.Key != nil {
+		validator.RecordSuccessUsage(ctx, res.Key)
+		// Give background write a tiny moment to commit before CLI exit
+		time.Sleep(20 * time.Millisecond)
+	}
 
 	fmt.Printf("Verification Result:\n")
 	fmt.Printf("  Valid:       %v\n", res.Valid)
@@ -386,6 +406,15 @@ func keyRevoke(args []string) {
 		fmt.Printf("Revocation failed: %v\n", err)
 		os.Exit(1)
 	}
+
+	_ = db.RecordAuditLog(context.Background(), &storage.AuditLog{
+		WorkspaceID: "ws_default",
+		Actor:       "cli",
+		Action:      "key.revoked",
+		TargetID:    *keyID,
+		Details:     map[string]string{"source": "cli"},
+		Timestamp:   *revokedAt,
+	})
 
 	fmt.Printf("Key %s successfully revoked at %s\n", *keyID, revokedAt.Format(time.RFC3339))
 }
