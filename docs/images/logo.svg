@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="squircle-clip">
+      <rect x="24" y="24" width="976" height="976" rx="220" />
+    </clipPath>
+
+    <linearGradient id="cyan-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <linearGradient id="gold-beak" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fcd34d"/>
+      <stop offset="40%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+
+    <linearGradient id="gold-beak-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#78350f"/>
+    </linearGradient>
+
+    <linearGradient id="chest-portal" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff"/>
+      <stop offset="40%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <filter id="subtle-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.14" />
+    </filter>
+
+    <filter id="cyan-bloom" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Luxury White Squircle Container -->
+  <rect x="24" y="24" width="976" height="976" rx="220" fill="#ffffff" stroke="#e2e8f0" stroke-width="6" />
+
+  <g clip-path="url(#squircle-clip)">
+    <g transform="translate(512, 512)" filter="url(#subtle-shadow)">
+
+      <!-- Hexagonal Architectural Gateway Frame -->
+      <polygon points="
+        0,-390
+        338,-195
+        338,195
+        0,390
+        -338,195
+        -338,-195
+      " fill="none" stroke="#0f172a" stroke-width="40" stroke-linejoin="round" />
+
+      <!-- Inner Precision Telemetry Ring -->
+      <polygon points="
+        0,-355
+        307,-177
+        307,177
+        0,355
+        -307,177
+        -307,-177
+      " fill="none" stroke="#00f5ff" stroke-width="4" opacity="0.45" stroke-dasharray="16, 12" />
+
+      <!-- 100% Watertight Solid Base Silhouette -->
+      <path d="
+        M 0 -335
+        L 48 -285 L 98 -335 L 130 -255 L 205 -295 L 210 -195 L 265 -210 L 240 -105
+        L 285 -85 L 255 25 L 280 75 L 225 165 L 240 275 L 145 255 L 115 325
+        L 0 355
+        L -115 325 L -145 255 L -240 275 L -225 165 L -280 75 L -255 25
+        L -285 -85 L -240 -105 L -265 -210 L -210 -195 L -205 -295 L -130 -255
+        L -98 -335 L -48 -285 Z
+      " fill="#0b0f19" />
+
+      <!-- ================= LOW-POLY GRYPHON FACETS ================= -->
+
+      <!-- CROWN AND CREST FEATHERS -->
+      <!-- Center Crown Spear -->
+      <polygon points="0,-335 -38,-260 0,-240" fill="#334155" />
+      <polygon points="0,-335 0,-240 38,-260" fill="#1e293b" />
+
+      <!-- Inner Crest Lateral Spears -->
+      <polygon points="-38,-260 -98,-335 -78,-235" fill="#475569" />
+      <polygon points="38,-260 78,-235 98,-335" fill="#1e293b" />
+      <polygon points="-78,-235 -130,-255 -105,-185" fill="#334155" />
+      <polygon points="78,-235 105,-185 130,-255" fill="#0f172a" />
+
+      <!-- Outer Tufted Horns -->
+      <polygon points="-130,-255 -205,-295 -165,-175" fill="#475569" />
+      <polygon points="130,-255 165,-175 205,-295" fill="#1e293b" />
+      <polygon points="-205,-295 -210,-195 -165,-175" fill="#334155" />
+      <polygon points="205,-295 165,-175 210,-195" fill="#0f172a" />
+
+      <!-- FOREHEAD KEYSTONES -->
+      <polygon points="0,-240 -78,-235 -55,-165 0,-155" fill="#334155" />
+      <polygon points="0,-240 0,-155 55,-165 78,-235" fill="#1e293b" />
+
+      <!-- Central Forehead Shield -->
+      <polygon points="0,-155 -55,-165 -40,-95 0,-85" fill="#475569" />
+      <polygon points="0,-155 0,-85 40,-95 55,-165" fill="#1e293b" />
+
+      <!-- Temples and Lateral Brow -->
+      <polygon points="-78,-235 -165,-175 -125,-95 -55,-165" fill="#1e293b" />
+      <polygon points="78,-235 55,-165 125,-95 165,-175" fill="#0f172a" />
+
+      <!-- Outer Cheeks / Helm Ears -->
+      <polygon points="-165,-175 -265,-210 -220,-100 -125,-95" fill="#334155" />
+      <polygon points="165,-175 125,-95 220,-100 265,-210" fill="#0b0f19" />
+
+      <!-- Sharp Cheek Flares -->
+      <polygon points="-220,-100 -285,-85 -235,-15 -145,-15" fill="#1e293b" />
+      <polygon points="220,-100 145,-15 235,-15 285,-85" fill="#0f172a" />
+      <polygon points="-125,-95 -220,-100 -145,-15 -85,-15" fill="#334155" />
+      <polygon points="125,-95 85,-15 145,-15 220,-100" fill="#1e293b" />
+
+      <!-- AGGRESSIVE RAPTOR BROW RIDGES (Down-swept apex toward center) -->
+      <!-- Left Brow Armor Plate -->
+      <polygon points="0,-85 -40,-95 -125,-95 -75,-60 0,-50" fill="#1e293b" />
+      <polygon points="-40,-95 -125,-95 -135,-65 -75,-60" fill="#334155" />
+
+      <!-- Right Brow Armor Plate -->
+      <polygon points="0,-85 0,-50 75,-60 125,-95 40,-95" fill="#0f172a" />
+      <polygon points="40,-95 75,-60 135,-65 125,-95" fill="#1e293b" />
+
+      <!-- PREDATOR RAPTOR OPTICS (Tucked under brow, slanted fiercely up-and-out) -->
+      <!-- Left Eye Cavity -->
+      <polygon points="-35,-48 -120,-58 -70,-32" fill="#0b0f19" />
+      <!-- Left Radiant Iris (Sharp canted slit) -->
+      <polygon points="-40,-47 -110,-56 -72,-35" fill="url(#cyan-glow)" filter="url(#cyan-bloom)" />
+      <!-- Left Specular Glint -->
+      <polygon points="-68,-50 -60,-48 -66,-42" fill="#ffffff" />
+
+      <!-- Right Eye Cavity -->
+      <polygon points="35,-48 70,-32 120,-58" fill="#0b0f19" />
+      <!-- Right Radiant Iris -->
+      <polygon points="40,-47 72,-35 110,-56" fill="url(#cyan-glow)" filter="url(#cyan-bloom)" />
+      <!-- Right Specular Glint -->
+      <polygon points="68,-50 66,-42 60,-48" fill="#ffffff" />
+
+      <!-- LOWER CHEEKS & NASAL BRIDGE -->
+      <polygon points="0,-50 -35,-48 -30,10 0,0" fill="#334155" />
+      <polygon points="0,-50 0,0 30,10 35,-48" fill="#1e293b" />
+
+      <polygon points="-35,-48 -70,-32 -85,-15 -65,45 -30,10" fill="#1e293b" />
+      <polygon points="35,-48 30,10 65,45 85,-15 70,-32" fill="#0f172a" />
+
+      <!-- GOLDEN RAPTOR BEAK (Fierce hook curving down) -->
+      <!-- Upper Beak Bridge (Culmen) -->
+      <polygon points="0,0 -30,10 -38,70 0,90" fill="url(#gold-beak)" />
+      <polygon points="0,0 0,90 38,70 30,10" fill="url(#gold-beak-dark)" />
+
+      <!-- Beak Cutting Edges (Tomia) -->
+      <polygon points="-30,10 -65,45 -38,70" fill="#b45309" />
+      <polygon points="30,10 38,70 65,45" fill="#78350f" />
+
+      <!-- Hook Tip (Aggressive downward talon) -->
+      <polygon points="0,90 -38,70 -18,145 0,165" fill="#f59e0b" />
+      <polygon points="0,90 0,165 18,145 38,70" fill="#92400e" />
+      <!-- Sharp Beak Center Ridge -->
+      <polygon points="0,90 -6,145 0,168 6,145" fill="#fef08a" />
+
+      <!-- LOWER MANDIBLE & THROAT RUFF -->
+      <polygon points="-18,145 -38,70 -65,45 -55,120 0,150" fill="#1e293b" />
+      <polygon points="18,145 0,150 55,120 65,45 38,70" fill="#0f172a" />
+
+      <polygon points="-65,45 -145,-15 -180,65 -110,130 -55,120" fill="#334155" />
+      <polygon points="65,45 55,120 110,130 180,65 145,-15" fill="#1e293b" />
+
+      <polygon points="-180,65 -255,25 -280,75 -195,155 -110,130" fill="#1e293b" />
+      <polygon points="180,65 110,130 195,155 280,75 255,25" fill="#0f172a" />
+
+      <!-- PECTORAL SHIELD & GORGET PLATES -->
+      <polygon points="-110,130 -195,155 -140,215 -60,185" fill="#1e293b" />
+      <polygon points="110,130 60,185 140,215 195,155" fill="#0f172a" />
+
+      <polygon points="-60,185 -140,215 -145,255 -75,275" fill="#334155" />
+      <polygon points="60,185 75,275 145,255 140,215" fill="#1e293b" />
+
+      <polygon points="-60,185 -75,275 -40,315 -25,220" fill="#1e293b" />
+      <polygon points="60,185 25,220 40,315 75,275" fill="#0f172a" />
+
+      <!-- Lower Keel Plates -->
+      <polygon points="-40,315 -115,325 0,355" fill="#0f172a" />
+      <polygon points="40,315 0,355 115,325" fill="#090d16" />
+
+      <!-- THE KEYGATE VAULT PORTAL (Chest Centerpiece) -->
+      <!-- Outer Hexagonal Emblem Socket -->
+      <polygon points="0,175 32,192 32,228 0,245 -32,228 -32,192" fill="#090d16" stroke="#00f5ff" stroke-width="4" filter="url(#cyan-bloom)" />
+
+      <!-- Stylized Master Keyhole -->
+      <circle cx="0" cy="205" r="10" fill="url(#cyan-glow)" />
+      <polygon points="-5,208 5,208 8,232 -8,232" fill="url(#cyan-glow)" />
+
+      <!-- Vertical Cipher Stream Stem -->
+      <polygon points="-3,248 3,248 4,295 0,305 -4,295" fill="url(#chest-portal)" filter="url(#cyan-bloom)" />
+      <!-- Rate-Limit Sliding Flanges -->
+      <polygon points="4,260 16,260 16,270 4,270" fill="#00f5ff" />
+      <polygon points="4,280 12,280 12,290 4,290" fill="#00f5ff" />
+      <polygon points="-4,265 -14,265 -14,275 -4,275" fill="#00f5ff" />
+
+    </g>
+  </g>
+</svg>

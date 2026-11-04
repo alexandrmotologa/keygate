@@ -699,16 +699,17 @@ func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*Ana
 		}
 	}
 
+	since24h := time.Now().UTC().Add(-24 * time.Hour)
 	bucketQuery := `SELECT
-		strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour_bucket,
+		substr(timestamp, 1, 13) || ':00:00Z' as hour_bucket,
 		COUNT(*) as total,
 		SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) as success,
 		SUM(CASE WHEN status_code = 429 THEN 1 ELSE 0 END) as rate_limited,
 		SUM(CASE WHEN status_code = 401 OR status_code = 403 THEN 1 ELSE 0 END) as unauthorized,
 		COALESCE(AVG(latency_ms), 0) as avg_latency
 	FROM usage_events
-	WHERE timestamp >= datetime('now', '-24 hours')`
-	bucketArgs := []interface{}{}
+	WHERE timestamp >= ?`
+	bucketArgs := []interface{}{since24h}
 	if workspaceID != "" {
 		bucketQuery += " AND workspace_id = ?"
 		bucketArgs = append(bucketArgs, workspaceID)

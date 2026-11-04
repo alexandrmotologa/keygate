@@ -112,8 +112,8 @@ export const App: React.FC = () => {
             </div>
 
             {/* Workspace Switcher */}
-            <div className="hidden lg:flex items-center gap-1.5 pl-3 border-l border-border">
-              <Building2 className="w-4 h-4 text-slate-500" />
+            <div className="flex items-center gap-1.5 pl-2 sm:pl-3 border-l border-border">
+              <Building2 className="w-4 h-4 text-slate-500 hidden sm:inline" />
               <select
                 value={selectedWorkspace}
                 onChange={(e) => {
@@ -123,11 +123,11 @@ export const App: React.FC = () => {
                     setSelectedWorkspace(e.target.value);
                   }
                 }}
-                className="bg-background border border-border text-xs text-slate-200 rounded-lg px-2.5 py-1.5 font-medium focus:outline-none focus:border-primary-500"
+                className="bg-background border border-border text-xs text-slate-200 rounded-lg px-2 py-1 sm:px-2.5 sm:py-1.5 font-medium max-w-[120px] sm:max-w-none truncate focus:outline-none focus:border-primary-500"
               >
                 {workspaces.map((ws) => (
                   <option key={ws.id} value={ws.id}>
-                    {ws.name} ({ws.id})
+                    {ws.name}
                   </option>
                 ))}
                 <option value="__new__">+ New Workspace...</option>
