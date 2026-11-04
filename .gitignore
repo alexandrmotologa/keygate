@@ -1,12 +1,13 @@
 # Binaries and build artifacts
 bin/
-dist/
+/dist/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-keygate
+/keygate
+*.tsbuildinfo
 
 # SQLite databases
 *.db
@@ -17,7 +18,6 @@ keygate.db*
 
 # Node & Frontend
 node_modules/
-web/dist/
 web/.vite/
 .npm
 npm-debug.log*
