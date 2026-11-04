@@ -46,6 +46,7 @@ func TestSQLiteStorage(t *testing.T) {
 		RateLimit:    500,
 		RateDuration: 60,
 		Burst:        20,
+		MaxUses:      50,
 		Scopes:       []string{"read:users", "write:keys"},
 		IPAllowlist:  []string{"127.0.0.1"},
 		Metadata:     map[string]string{"env": "testing"},
@@ -140,5 +141,32 @@ func TestSQLiteStorage(t *testing.T) {
 	}
 	if revokedKey.Enabled || revokedKey.RevokedAt == nil {
 		t.Errorf("expected key to be revoked: enabled=%v, revokedAt=%v", revokedKey.Enabled, revokedKey.RevokedAt)
+	}
+
+	// Test 9: Workspace and Audit Logs
+	ws, err := db.CreateWorkspace(ctx, "ws_beta", "Beta Workspace")
+	if err != nil || ws.ID != "ws_beta" {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	workspaces, err := db.ListWorkspaces(ctx)
+	if err != nil || len(workspaces) < 2 {
+		t.Fatalf("expected at least 2 workspaces, got %d", len(workspaces))
+	}
+
+	err = db.RecordAuditLog(ctx, &AuditLog{
+		WorkspaceID: "ws_default",
+		Actor:       "admin_test",
+		Action:      "key.revoked",
+		TargetID:    "key_test_01",
+		Timestamp:   time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("failed to record audit log: %v", err)
+	}
+
+	logs, totalLogs, err := db.ListAuditLogs(ctx, "ws_default", 10, 0)
+	if err != nil || totalLogs < 1 || len(logs) < 1 {
+		t.Fatalf("expected at least 1 audit log, got total=%d", totalLogs)
 	}
 }

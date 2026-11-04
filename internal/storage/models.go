@@ -29,6 +29,7 @@ type APIKey struct {
 	Scopes        []string          `json:"scopes"`
 	IPAllowlist   []string          `json:"ipAllowlist"`
 	Metadata      map[string]string `json:"metadata"`
+	MaxUses       int               `json:"maxUses"` // 0 = unlimited usage
 	ExpiresAt     *time.Time        `json:"expiresAt,omitempty"`
 	RevokedAt     *time.Time        `json:"revokedAt,omitempty"`
 	Enabled       bool              `json:"enabled"`
@@ -38,7 +39,7 @@ type APIKey struct {
 	UpdatedAt     time.Time         `json:"updatedAt"`
 }
 
-// IsActive returns true if the key is enabled, not revoked, and not expired.
+// IsActive returns true if the key is enabled, not revoked, not expired, and has not exceeded max uses.
 func (k *APIKey) IsActive(now time.Time) bool {
 	if !k.Enabled {
 		return false
@@ -49,7 +50,21 @@ func (k *APIKey) IsActive(now time.Time) bool {
 	if k.ExpiresAt != nil && !k.ExpiresAt.IsZero() && now.After(*k.ExpiresAt) {
 		return false
 	}
+	if k.MaxUses > 0 && k.TotalRequests >= int64(k.MaxUses) {
+		return false
+	}
 	return true
+}
+
+// AuditLog records administrative security mutations.
+type AuditLog struct {
+	ID          int64             `json:"id"`
+	WorkspaceID string            `json:"workspaceId"`
+	Actor       string            `json:"actor"`
+	Action      string            `json:"action"` // key.created, key.revoked, key.updated, key.rotated, workspace.created
+	TargetID    string            `json:"targetId"`
+	Details     map[string]string `json:"details"`
+	Timestamp   time.Time         `json:"timestamp"`
 }
 
 // UsageEvent records telemetry for a verified or rejected request.

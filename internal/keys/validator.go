@@ -21,6 +21,7 @@ const (
 	CodeKeyRevoked         ValidationCode = "KEY_REVOKED"
 	CodeKeyExpired         ValidationCode = "KEY_EXPIRED"
 	CodeKeyDisabled        ValidationCode = "KEY_DISABLED"
+	CodeQuotaExceeded      ValidationCode = "QUOTA_EXCEEDED"
 	CodeInsufficientScopes ValidationCode = "INSUFFICIENT_SCOPES"
 	CodeIPForbidden        ValidationCode = "IP_FORBIDDEN"
 	CodeRateLimited        ValidationCode = "RATE_LIMITED"
@@ -217,6 +218,17 @@ func (v *Validator) Verify(ctx context.Context, req ValidationRequest) *Validati
 			Valid:      false,
 			Code:       CodeKeyDisabled,
 			Message:    "API key has been disabled.",
+			Key:        apiKey,
+			Cached:     cached,
+			DurationUs: time.Since(start).Microseconds(),
+		}
+	}
+
+	if apiKey.MaxUses > 0 && apiKey.TotalRequests >= int64(apiKey.MaxUses) {
+		return &ValidationResponse{
+			Valid:      false,
+			Code:       CodeQuotaExceeded,
+			Message:    fmt.Sprintf("API key maximum usage quota of %d requests has been exhausted.", apiKey.MaxUses),
 			Key:        apiKey,
 			Cached:     cached,
 			DurationUs: time.Since(start).Microseconds(),

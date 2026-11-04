@@ -1,4 +1,4 @@
-import { APIKey, CreatedKeyResult, AnalyticsSummary, VerifyKeyResult } from '../types';
+import { APIKey, CreatedKeyResult, RotatedKeyResult, AnalyticsSummary, VerifyKeyResult, Workspace, AuditLog, UsageEvent } from '../types';
 
 const BASE_URL = '';
 
@@ -35,6 +35,14 @@ export async function fetchKeys(opts: {
   };
 }
 
+export async function fetchKeyDetails(keyId: string): Promise<{ key: APIKey; history: UsageEvent[] }> {
+  const res = await fetch(`${BASE_URL}/v1/keys.getKey?id=${encodeURIComponent(keyId)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch key details: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export interface CreateKeyPayload {
   name: string;
   workspaceId?: string;
@@ -44,6 +52,7 @@ export interface CreateKeyPayload {
   rateLimit?: number;
   rateDuration?: number;
   burst?: number;
+  maxUses?: number;
   scopes?: string[];
   ipAllowlist?: string[];
   expiresAt?: string;
@@ -59,6 +68,42 @@ export async function createKey(payload: CreateKeyPayload): Promise<CreatedKeyRe
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || 'Failed to create key');
+  }
+  return res.json();
+}
+
+export async function updateKey(keyId: string, opts: {
+  name?: string;
+  tier?: string;
+  rateLimit?: number;
+  rateDuration?: number;
+  burst?: number;
+  maxUses?: number;
+  scopes?: string[];
+  ipAllowlist?: string[];
+  enabled?: boolean;
+}): Promise<{ success: boolean; keyId: string }> {
+  const res = await fetch(`${BASE_URL}/v1/keys.updateKey`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyId, ...opts }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || 'Failed to update key');
+  }
+  return res.json();
+}
+
+export async function rotateKey(keyId: string, gracePeriodHours = 24): Promise<RotatedKeyResult> {
+  const res = await fetch(`${BASE_URL}/v1/keys.rotateKey`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyId, gracePeriodHours }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || 'Failed to rotate key');
   }
   return res.json();
 }
@@ -86,5 +131,31 @@ export async function verifyKey(payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  return res.json();
+}
+
+export async function fetchWorkspaces(): Promise<Workspace[]> {
+  const res = await fetch(`${BASE_URL}/v1/workspaces.list`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.workspaces || [];
+}
+
+export async function createWorkspace(id: string, name: string): Promise<Workspace> {
+  const res = await fetch(`${BASE_URL}/v1/workspaces.create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || 'Failed to create workspace');
+  }
+  return res.json();
+}
+
+export async function fetchAuditLogs(workspaceId = 'ws_default'): Promise<{ logs: AuditLog[]; total: number }> {
+  const res = await fetch(`${BASE_URL}/v1/audit.list?workspaceId=${encodeURIComponent(workspaceId)}`);
+  if (!res.ok) return { logs: [], total: 0 };
   return res.json();
 }

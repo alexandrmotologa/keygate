@@ -19,6 +19,7 @@ export const KeyCreationModal: React.FC<KeyCreationModalProps> = ({ isOpen, onCl
   const [customBurst, setCustomBurst] = useState(25);
   const [scopesInput, setScopesInput] = useState('read:users, write:keys');
   const [ipAllowlistInput, setIpAllowlistInput] = useState('');
+  const [maxUses, setMaxUses] = useState(0);
   const [expiryOption, setExpiryOption] = useState<'never' | '30d' | '90d' | '1y'>('90d');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export const KeyCreationModal: React.FC<KeyCreationModalProps> = ({ isOpen, onCl
         workspaceId,
         ownerId,
         tier,
+        maxUses,
         scopes,
         ipAllowlist,
         expiresAt,
@@ -232,6 +234,25 @@ export const KeyCreationModal: React.FC<KeyCreationModalProps> = ({ isOpen, onCl
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Max Uses Quota Cap */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Lifetime Request Quota (Max Uses)</span>
+              <span className="text-slate-500 font-normal lowercase">0 = unlimited</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              placeholder="0 (Unlimited)"
+              value={maxUses || ''}
+              onChange={(e) => setMaxUses(parseInt(e.target.value) || 0)}
+              className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-primary-500"
+            />
+            <span className="text-[11px] text-slate-500 mt-1 block">
+              Ideal for ephemeral AI agents or temporary access. Key is auto-blocked once quota is exhausted.
+            </span>
           </div>
 
           {/* Scopes */}

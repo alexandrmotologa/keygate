@@ -8,12 +8,18 @@ KeyGate runs as an inline reverse proxy or as a standalone key verification serv
 
 ## Features
 
-- **Sub-Millisecond Verification**: In-memory cache powered by `dgraph-io/ristretto` validates active keys in under 0.5ms with automatic invalidation.
+- **Sub-Millisecond Verification**: In-memory cache powered by `dgraph-io/ristretto` validates active keys in under 0.5ms (benchmark: 211 ns/op) with automatic invalidation.
 - **Irreversible Key Storage**: Issues Base58 keys formatted as `sk_live_{workspace}_{random}`. Only salted SHA-256 hashes are persisted in SQLite.
 - **Sliding-Window Rate Limiter**: Multi-tier quotas (Free, Pro, Enterprise, Custom) using sliding-window counters with token-bucket burst handling.
 - **Standard IETF Headers**: Returns `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `Retry-After` on all endpoints.
+- **Ephemeral & Quota-Capped Keys (`maxUses`)**: Set lifetime call limits for AI agents and temporary integrations; automatically disabled upon quota exhaustion.
+- **Zero-Downtime Key Rotation**: Rotate keys with configurable overlap grace periods (e.g. 24h) ensuring zero client outages during credential transition.
+- **Key Inspector & Live Edit Drawer**: Modify quotas, scopes, IP allowlists, and toggle active/disabled status on the fly without reissuing keys.
+- **Multi-Workspace Isolation**: Organize and separate keys, quotas, and audit logs by environment (`Production`, `Staging`, `Development`) or tenant.
+- **Multi-Language Code Generator**: Generates ready-to-paste integration snippets in cURL, TypeScript, Python, Go, and Rust.
+- **Security Audit Trail & Data Export**: Immutable ledger of administrative actions and 1-click export of keys to CSV and JSON.
+- **Native Prometheus Exporter**: Exposes `/metrics` in standard Prometheus text format for Grafana and SRE observability.
 - **Inline Reverse Proxy**: Listens on port 8000, intercepts client keys, injects trusted identity headers (`X-KeyGate-Key-Id`, `X-KeyGate-Scopes`), strips credentials, and forwards to upstream services.
-- **Standalone REST API**: Exposes direct endpoints including `POST /v1/keys.verifyKey` for microservices verifying keys out of band.
 - **Embedded Web Studio**: React 19 dashboard compiled directly into the Go binary with live request streaming (SSE), key issuance, and in-browser API testing.
 - **Zero CGO Dependency**: Uses `modernc.org/sqlite` with WAL mode for portable, single-binary cross-compilation.
 
@@ -64,6 +70,9 @@ keygate key verify --key sk_live_ws_default_...
 # Revoke a key
 keygate key revoke --id key_01jh8b2c4e5f6g7h8j9k0l1m
 
+# List keys in a workspace
+keygate key list --workspace ws_default
+
 # Run throughput and latency benchmark
 keygate benchmark --keys 1000 --concurrency 50 --requests 50000
 ```
@@ -83,7 +92,7 @@ Client Request
 │  2. In-Memory Cache Lookup (Ristretto)        │
 │     ├── Hit:  < 0.2ms                         │
 │     └── Miss: Read SQLite (WAL) & Cache       │
-│  3. Verify Expiry, Scopes & IP Allowlist      │
+│  3. Verify Expiry, Max Uses & IP Allowlist    │
 │  4. Evaluate Sliding-Window Rate Limiter      │
 │  5. Strip Key & Inject X-KeyGate-* Headers    │
 └───────────────────────┬───────────────────────┘
@@ -127,39 +136,34 @@ Response:
     "limit": 500,
     "remaining": 499,
     "reset": 58
-  }
+  },
+  "cached": true,
+  "durationUs": 211
 }
 ```
 
 ---
 
-## Rate Limiting & IETF Headers
+## Prometheus Observability
 
-KeyGate enforces sliding-window quotas per key tier:
+KeyGate includes an integrated Prometheus `/metrics` endpoint:
 
-| Tier | Limit | Window | Burst Tolerance |
-|---|---|---|---|
-| `free` | 10 requests | 60 seconds | 2 requests |
-| `pro` | 500 requests | 60 seconds | 25 requests |
-| `enterprise` | 10,000 requests | 60 seconds | 500 requests |
-| `custom` | Configurable | Configurable | Configurable |
-
-All responses include IETF draft headers:
-
-```http
-RateLimit-Limit: 500
-RateLimit-Remaining: 492
-RateLimit-Reset: 28
 ```
+# HELP keygate_requests_total Total API requests processed
+# TYPE keygate_requests_total counter
+keygate_requests_total{status="200"} 12450
+keygate_requests_total{status="429"} 14
+keygate_requests_total{status="401"} 8
 
-If quota is exceeded:
+# HELP keygate_cache_events_total In-memory Ristretto cache events
+# TYPE keygate_cache_events_total counter
+keygate_cache_events_total{result="hit"} 12432
+keygate_cache_events_total{result="miss"} 18
 
-```http
-HTTP/1.1 429 Too Many Requests
-Retry-After: 28
-RateLimit-Limit: 500
-RateLimit-Remaining: 0
-RateLimit-Reset: 28
+# HELP keygate_verification_latency_ms Verification latency percentiles
+# TYPE keygate_verification_latency_ms gauge
+keygate_verification_latency_ms{quantile="0.5"} 0.0002
+keygate_verification_latency_ms{quantile="0.99"} 0.0005
 ```
 
 ---
@@ -168,7 +172,7 @@ RateLimit-Reset: 28
 
 ```bash
 # Run backend tests
-go test -v -race ./...
+go test -v -count=1 ./...
 
 # Run frontend development server
 cd web

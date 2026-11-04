@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CreatedKeyResult } from '../types';
-import { Check, Copy, AlertCircle, KeyRound, Terminal } from 'lucide-react';
+import { CodeGenerator } from './CodeGenerator';
+import { Check, Copy, AlertCircle, KeyRound } from 'lucide-react';
 
 interface SecretKeyModalProps {
   keyResult: CreatedKeyResult | null;
@@ -9,7 +10,6 @@ interface SecretKeyModalProps {
 
 export const SecretKeyModal: React.FC<SecretKeyModalProps> = ({ keyResult, onClose }) => {
   const [copiedKey, setCopiedKey] = useState(false);
-  const [copiedCurl, setCopiedCurl] = useState(false);
 
   if (!keyResult) return null;
 
@@ -19,19 +19,9 @@ export const SecretKeyModal: React.FC<SecretKeyModalProps> = ({ keyResult, onClo
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
-  const curlExample = `curl -X POST http://localhost:8000/v1/keys.verifyKey \\
-  -H "Content-Type: application/json" \\
-  -d '{"key": "${keyResult.key}"}'`;
-
-  const handleCopyCurl = () => {
-    navigator.clipboard.writeText(curlExample);
-    setCopiedCurl(true);
-    setTimeout(() => setCopiedCurl(false), 2000);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-surface border border-border w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5">
+      <div className="bg-surface border border-border w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-emerald-950/60 border border-emerald-800/40 rounded-xl text-emerald-400">
@@ -70,24 +60,12 @@ export const SecretKeyModal: React.FC<SecretKeyModalProps> = ({ keyResult, onClo
           </div>
         </div>
 
-        {/* Ready-to-use cURL Snippet */}
+        {/* Multi-Language Code Snippets */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Terminal className="w-3.5 h-3.5 text-slate-400" />
-              Quick Test Command
-            </label>
-            <button
-              onClick={handleCopyCurl}
-              className="text-xs text-primary-400 hover:text-primary-300 transition-colors flex items-center gap-1"
-            >
-              {copiedCurl ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              {copiedCurl ? 'Copied' : 'Copy cURL'}
-            </button>
-          </div>
-          <pre className="p-3 bg-background border border-border rounded-xl font-mono text-xs text-slate-300 overflow-x-auto">
-            {curlExample}
-          </pre>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
+            Integration Snippets (cURL, TypeScript, Python, Go, Rust)
+          </label>
+          <CodeGenerator apiKey={keyResult.key} />
         </div>
 
         {/* Footer */}

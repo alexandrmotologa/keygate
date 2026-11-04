@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { verifyKey } from '../services/api';
 import { VerifyKeyResult } from '../types';
+import { CodeGenerator } from './CodeGenerator';
 import { Zap, Play, CheckCircle2, XCircle, Clock, ShieldCheck } from 'lucide-react';
 
 export const ApiTester: React.FC = () => {
@@ -228,6 +229,12 @@ export const ApiTester: React.FC = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Multi-Language Code Snippet Generator */}
+      <div className="space-y-3">
+        <h2 className="text-base font-semibold text-white">Client Code Snippets</h2>
+        <CodeGenerator apiKey={apiKeyInput || 'sk_live_ws_default_sampleKey123'} />
       </div>
     </div>
   );

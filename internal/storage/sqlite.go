@@ -23,19 +23,16 @@ type DB struct {
 
 // Open creates or connects to a SQLite database in WAL mode and runs migrations.
 func Open(path string) (*DB, error) {
-	// Enable WAL, busy timeout, and normal synchronous mode via connection DSN
 	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", path)
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
-	// Configure connection pool
 	sqlDB.SetMaxOpenConns(25)
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetConnMaxLifetime(1 * time.Hour)
 
-	// Verify connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := sqlDB.PingContext(ctx); err != nil {
@@ -77,6 +74,7 @@ func (db *DB) migrate() error {
 			rate_limit INTEGER NOT NULL DEFAULT 60,
 			rate_duration INTEGER NOT NULL DEFAULT 60,
 			burst INTEGER NOT NULL DEFAULT 10,
+			max_uses INTEGER NOT NULL DEFAULT 0,
 			scopes_json TEXT NOT NULL DEFAULT '[]',
 			ip_allowlist_json TEXT NOT NULL DEFAULT '[]',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -121,6 +119,17 @@ func (db *DB) migrate() error {
 			UNIQUE(workspace_id, hour_bucket)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_hourly_stats_ws_hour ON hourly_stats(workspace_id, hour_bucket);`,
+
+		`CREATE TABLE IF NOT EXISTS audit_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			workspace_id TEXT NOT NULL,
+			actor TEXT NOT NULL,
+			action TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			details_json TEXT NOT NULL DEFAULT '{}',
+			timestamp DATETIME NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_ws_time ON audit_logs(workspace_id, timestamp);`,
 	}
 
 	for _, query := range queries {
@@ -128,6 +137,9 @@ func (db *DB) migrate() error {
 			return fmt.Errorf("migration query error: %w (query: %s)", err, query)
 		}
 	}
+
+	// Idempotent column check for existing databases
+	_, _ = db.Exec("ALTER TABLE api_keys ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 0;")
 
 	// Seed default workspace if empty
 	return db.seedDefaultWorkspace()
@@ -155,6 +167,58 @@ func (db *DB) seedDefaultWorkspace() error {
 		}
 	}
 	return nil
+}
+
+// CreateWorkspace provisions a new isolated workspace with a cryptographic salt.
+func (db *DB) CreateWorkspace(ctx context.Context, id, name string) (*Workspace, error) {
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	if id == "" {
+		return nil, fmt.Errorf("workspace ID is required")
+	}
+	if name == "" {
+		name = id
+	}
+
+	saltBytes := make([]byte, 16)
+	if _, err := rand.Read(saltBytes); err != nil {
+		return nil, err
+	}
+	salt := hex.EncodeToString(saltBytes)
+	now := time.Now().UTC()
+
+	query := "INSERT INTO workspaces (id, name, salt, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+	_, err := db.ExecContext(ctx, query, id, name, salt, now, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert workspace: %w", err)
+	}
+
+	return &Workspace{
+		ID:        id,
+		Name:      name,
+		Salt:      salt,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+// ListWorkspaces retrieves all registered workspaces.
+func (db *DB) ListWorkspaces(ctx context.Context) ([]*Workspace, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM workspaces ORDER BY created_at ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workspaces []*Workspace
+	for rows.Next() {
+		var w Workspace
+		if err := rows.Scan(&w.ID, &w.Name, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		workspaces = append(workspaces, &w)
+	}
+	return workspaces, nil
 }
 
 // GetWorkspaceSalt retrieves the salt for a given workspace.
@@ -206,14 +270,14 @@ func (db *DB) CreateKey(ctx context.Context, key *APIKey) error {
 
 	query := `INSERT INTO api_keys (
 		id, key_hash, prefix, name, owner_id, workspace_id, tier,
-		rate_limit, rate_duration, burst, scopes_json, ip_allowlist_json,
+		rate_limit, rate_duration, burst, max_uses, scopes_json, ip_allowlist_json,
 		metadata_json, expires_at, revoked_at, enabled, total_requests,
 		last_used_at, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err = db.ExecContext(ctx, query,
 		key.ID, key.KeyHash, key.Prefix, key.Name, key.OwnerID, key.WorkspaceID, key.Tier,
-		key.RateLimit, key.RateDuration, key.Burst, string(scopesJSON), string(ipJSON),
+		key.RateLimit, key.RateDuration, key.Burst, key.MaxUses, string(scopesJSON), string(ipJSON),
 		string(metaJSON), key.ExpiresAt, key.RevokedAt, enabledInt, key.TotalRequests,
 		key.LastUsedAt, key.CreatedAt, key.UpdatedAt,
 	)
@@ -227,7 +291,7 @@ func (db *DB) CreateKey(ctx context.Context, key *APIKey) error {
 func (db *DB) GetKeyByHash(ctx context.Context, keyHash string) (*APIKey, error) {
 	query := `SELECT
 		id, key_hash, prefix, name, owner_id, workspace_id, tier,
-		rate_limit, rate_duration, burst, scopes_json, ip_allowlist_json,
+		rate_limit, rate_duration, burst, max_uses, scopes_json, ip_allowlist_json,
 		metadata_json, expires_at, revoked_at, enabled, total_requests,
 		last_used_at, created_at, updated_at
 	FROM api_keys WHERE key_hash = ?`
@@ -240,7 +304,7 @@ func (db *DB) GetKeyByHash(ctx context.Context, keyHash string) (*APIKey, error)
 func (db *DB) GetKeyByID(ctx context.Context, keyID string) (*APIKey, error) {
 	query := `SELECT
 		id, key_hash, prefix, name, owner_id, workspace_id, tier,
-		rate_limit, rate_duration, burst, scopes_json, ip_allowlist_json,
+		rate_limit, rate_duration, burst, max_uses, scopes_json, ip_allowlist_json,
 		metadata_json, expires_at, revoked_at, enabled, total_requests,
 		last_used_at, created_at, updated_at
 	FROM api_keys WHERE id = ?`
@@ -281,12 +345,12 @@ func (db *DB) ListKeys(ctx context.Context, opts ListKeysOptions) ([]*APIKey, in
 	now := time.Now().UTC()
 	switch opts.Status {
 	case "active":
-		whereClauses = append(whereClauses, "enabled = 1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)")
+		whereClauses = append(whereClauses, "enabled = 1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) AND (max_uses = 0 OR total_requests < max_uses)")
 		args = append(args, now)
 	case "revoked":
 		whereClauses = append(whereClauses, "revoked_at IS NOT NULL")
 	case "expired":
-		whereClauses = append(whereClauses, "expires_at IS NOT NULL AND expires_at <= ?")
+		whereClauses = append(whereClauses, "(expires_at IS NOT NULL AND expires_at <= ?) OR (max_uses > 0 AND total_requests >= max_uses)")
 		args = append(args, now)
 	}
 
@@ -306,7 +370,7 @@ func (db *DB) ListKeys(ctx context.Context, opts ListKeysOptions) ([]*APIKey, in
 
 	query := fmt.Sprintf(`SELECT
 		id, key_hash, prefix, name, owner_id, workspace_id, tier,
-		rate_limit, rate_duration, burst, scopes_json, ip_allowlist_json,
+		rate_limit, rate_duration, burst, max_uses, scopes_json, ip_allowlist_json,
 		metadata_json, expires_at, revoked_at, enabled, total_requests,
 		last_used_at, created_at, updated_at
 	FROM api_keys WHERE %s ORDER BY created_at DESC LIMIT ? OFFSET ?`, whereSQL)
@@ -355,8 +419,10 @@ type UpdateKeyOptions struct {
 	RateLimit    *int
 	RateDuration *int
 	Burst        *int
+	MaxUses      *int
 	Scopes       *[]string
 	IPAllowlist  *[]string
+	ExpiresAt    *time.Time
 	Enabled      *bool
 }
 
@@ -386,6 +452,10 @@ func (db *DB) UpdateKey(ctx context.Context, keyID string, opts UpdateKeyOptions
 		setClauses = append(setClauses, "burst = ?")
 		args = append(args, *opts.Burst)
 	}
+	if opts.MaxUses != nil {
+		setClauses = append(setClauses, "max_uses = ?")
+		args = append(args, *opts.MaxUses)
+	}
 	if opts.Scopes != nil {
 		scopesJSON, _ := json.Marshal(*opts.Scopes)
 		setClauses = append(setClauses, "scopes_json = ?")
@@ -395,6 +465,10 @@ func (db *DB) UpdateKey(ctx context.Context, keyID string, opts UpdateKeyOptions
 		ipJSON, _ := json.Marshal(*opts.IPAllowlist)
 		setClauses = append(setClauses, "ip_allowlist_json = ?")
 		args = append(args, string(ipJSON))
+	}
+	if opts.ExpiresAt != nil {
+		setClauses = append(setClauses, "expires_at = ?")
+		args = append(args, *opts.ExpiresAt)
 	}
 	if opts.Enabled != nil {
 		enabledInt := 0
@@ -440,6 +514,89 @@ func (db *DB) RecordUsageEvent(ctx context.Context, event *UsageEvent) error {
 	return err
 }
 
+// GetKeyUsageHistory returns recent usage events specifically for a single key.
+func (db *DB) GetKeyUsageHistory(ctx context.Context, keyID string, limit int) ([]*UsageEvent, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	query := `SELECT id, key_id, workspace_id, status_code, latency_ms, client_ip, path, method, timestamp
+		FROM usage_events WHERE key_id = ? ORDER BY timestamp DESC LIMIT ?`
+	rows, err := db.QueryContext(ctx, query, keyID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []*UsageEvent
+	for rows.Next() {
+		var ev UsageEvent
+		if err := rows.Scan(&ev.ID, &ev.KeyID, &ev.WorkspaceID, &ev.StatusCode, &ev.LatencyMs, &ev.ClientIP, &ev.Path, &ev.Method, &ev.Timestamp); err != nil {
+			return nil, err
+		}
+		events = append(events, &ev)
+	}
+	return events, nil
+}
+
+// RecordAuditLog inserts an administrative action entry.
+func (db *DB) RecordAuditLog(ctx context.Context, log *AuditLog) error {
+	detailsJSON, err := json.Marshal(log.Details)
+	if err != nil {
+		detailsJSON = []byte("{}")
+	}
+
+	query := `INSERT INTO audit_logs (workspace_id, actor, action, target_id, details_json, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	_, err = db.ExecContext(ctx, query, log.WorkspaceID, log.Actor, log.Action, log.TargetID, string(detailsJSON), log.Timestamp)
+	return err
+}
+
+// ListAuditLogs returns filtered security audit trails.
+func (db *DB) ListAuditLogs(ctx context.Context, workspaceID string, limit, offset int) ([]*AuditLog, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	whereClause := "1=1"
+	args := []interface{}{}
+	if workspaceID != "" {
+		whereClause = "workspace_id = ?"
+		args = append(args, workspaceID)
+	}
+
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM audit_logs WHERE %s", whereClause)
+	var total int
+	_ = db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+
+	query := fmt.Sprintf(`SELECT id, workspace_id, actor, action, target_id, details_json, timestamp
+		FROM audit_logs WHERE %s ORDER BY timestamp DESC LIMIT ? OFFSET ?`, whereClause)
+	queryArgs := append(args, limit, offset)
+
+	rows, err := db.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var logs []*AuditLog
+	for rows.Next() {
+		var l AuditLog
+		var detJSON string
+		if err := rows.Scan(&l.ID, &l.WorkspaceID, &l.Actor, &l.Action, &l.TargetID, &detJSON, &l.Timestamp); err != nil {
+			return nil, 0, err
+		}
+		_ = json.Unmarshal([]byte(detJSON), &l.Details)
+		if l.Details == nil {
+			l.Details = make(map[string]string)
+		}
+		logs = append(logs, &l)
+	}
+	return logs, total, nil
+}
+
 // GetAnalyticsSummary calculates high-level telemetry and percentiles.
 func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*AnalyticsSummary, error) {
 	summary := &AnalyticsSummary{
@@ -447,10 +604,9 @@ func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*Ana
 		HourlyBuckets:  make([]HourlyBucketData, 0),
 	}
 
-	// Key Counts
 	keyQuery := `SELECT
 		COUNT(*) as total,
-		SUM(CASE WHEN enabled = 1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > datetime('now')) THEN 1 ELSE 0 END) as active,
+		SUM(CASE WHEN enabled = 1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > datetime('now')) AND (max_uses = 0 OR total_requests < max_uses) THEN 1 ELSE 0 END) as active,
 		SUM(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END) as revoked
 	FROM api_keys`
 	keyArgs := []interface{}{}
@@ -468,7 +624,6 @@ func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*Ana
 	summary.ActiveKeys = activeKeys.Int64
 	summary.RevokedKeys = revokedKeys.Int64
 
-	// Usage Events aggregate
 	usageQuery := `SELECT
 		COUNT(*) as total,
 		SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) as success,
@@ -497,7 +652,6 @@ func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*Ana
 	summary.UnauthorizedRequests = unauthorizedReqs.Int64
 	summary.AvgLatencyMs = avgLatency.Float64
 
-	// Latency percentiles calculation
 	latQuery := `SELECT latency_ms FROM usage_events`
 	latArgs := []interface{}{}
 	if workspaceID != "" {
@@ -523,7 +677,6 @@ func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*Ana
 		}
 	}
 
-	// Requests by Tier
 	tierQuery := `SELECT k.tier, COUNT(u.id)
 		FROM usage_events u
 		JOIN api_keys k ON u.key_id = k.id`
@@ -546,7 +699,6 @@ func (db *DB) GetAnalyticsSummary(ctx context.Context, workspaceID string) (*Ana
 		}
 	}
 
-	// Hourly time series (last 24 hours)
 	bucketQuery := `SELECT
 		strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour_bucket,
 		COUNT(*) as total,
@@ -601,7 +753,6 @@ func percentile(sortedData []float64, pct float64) float64 {
 	return sortedData[lowIndex]*(1.0-weight) + sortedData[highIndex]*weight
 }
 
-// Helpers for scanning rows
 type scannable interface {
 	Scan(dest ...interface{}) error
 }
@@ -613,7 +764,7 @@ func (db *DB) scanKey(row scannable) (*APIKey, error) {
 
 	err := row.Scan(
 		&k.ID, &k.KeyHash, &k.Prefix, &k.Name, &k.OwnerID, &k.WorkspaceID, &k.Tier,
-		&k.RateLimit, &k.RateDuration, &k.Burst, &scopesJSON, &ipJSON,
+		&k.RateLimit, &k.RateDuration, &k.Burst, &k.MaxUses, &scopesJSON, &ipJSON,
 		&metaJSON, &k.ExpiresAt, &k.RevokedAt, &enabledInt, &k.TotalRequests,
 		&k.LastUsedAt, &k.CreatedAt, &k.UpdatedAt,
 	)

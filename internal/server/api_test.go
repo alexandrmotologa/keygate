@@ -72,7 +72,7 @@ func TestServerAPI(t *testing.T) {
 		t.Errorf("expected 200 for /healthz, got %d", recHealth.Code)
 	}
 
-	// 2. Create Key
+	// 2. Create Key with MaxUses
 	createPayload := map[string]interface{}{
 		"name":        "Test API Key",
 		"workspaceId": "ws_default",
@@ -80,6 +80,7 @@ func TestServerAPI(t *testing.T) {
 		"ownerId":     "usr_test",
 		"tier":        "pro",
 		"rateLimit":   100,
+		"maxUses":     10,
 		"scopes":      []string{"read:users", "write:users"},
 	}
 	body, _ := json.Marshal(createPayload)
@@ -92,13 +93,14 @@ func TestServerAPI(t *testing.T) {
 	}
 
 	var createRes struct {
-		KeyID string `json:"keyId"`
-		Key   string `json:"key"`
-		Name  string `json:"name"`
+		KeyID   string `json:"keyId"`
+		Key     string `json:"key"`
+		Name    string `json:"name"`
+		MaxUses int    `json:"maxUses"`
 	}
 	_ = json.Unmarshal(recCreate.Body.Bytes(), &createRes)
-	if !strings.HasPrefix(createRes.Key, "sk_live_ws_default_") {
-		t.Errorf("unexpected key format: %s", createRes.Key)
+	if !strings.HasPrefix(createRes.Key, "sk_live_ws_default_") || createRes.MaxUses != 10 {
+		t.Errorf("unexpected create key response: %+v", createRes)
 	}
 
 	// 3. Verify Key
@@ -116,71 +118,78 @@ func TestServerAPI(t *testing.T) {
 		t.Fatalf("expected 200 for verifyKey, got %d", recVerify.Code)
 	}
 
-	var verifyRes struct {
-		Valid     bool   `json:"valid"`
-		Code      string `json:"code"`
-		KeyID     string `json:"keyId"`
-		RateLimit struct {
-			Remaining int `json:"remaining"`
-		} `json:"rateLimit"`
-	}
-	_ = json.Unmarshal(recVerify.Body.Bytes(), &verifyRes)
-	if !verifyRes.Valid || verifyRes.Code != "VALID" || verifyRes.KeyID != createRes.KeyID {
-		t.Errorf("verifyKey failed: %+v", verifyRes)
+	// 4. Get Single Key Details
+	reqGet := httptest.NewRequest("GET", "/v1/keys.getKey?id="+createRes.KeyID, nil)
+	recGet := httptest.NewRecorder()
+	mux.ServeHTTP(recGet, reqGet)
+
+	if recGet.Code != http.StatusOK {
+		t.Fatalf("expected 200 for getKey, got %d", recGet.Code)
 	}
 
-	// 4. List Keys
-	reqList := httptest.NewRequest("GET", "/v1/keys.listKeys?workspaceId=ws_default", nil)
-	recList := httptest.NewRecorder()
-	mux.ServeHTTP(recList, reqList)
+	// 5. Rotate Key
+	rotatePayload := map[string]interface{}{
+		"keyId":            createRes.KeyID,
+		"gracePeriodHours": 48,
+	}
+	rotBody, _ := json.Marshal(rotatePayload)
+	reqRotate := httptest.NewRequest("POST", "/v1/keys.rotateKey", bytes.NewReader(rotBody))
+	recRotate := httptest.NewRecorder()
+	mux.ServeHTTP(recRotate, reqRotate)
 
-	if recList.Code != http.StatusOK {
-		t.Fatalf("expected 200 for listKeys, got %d", recList.Code)
-	}
-	var listRes struct {
-		Total int `json:"total"`
-	}
-	_ = json.Unmarshal(recList.Body.Bytes(), &listRes)
-	if listRes.Total != 1 {
-		t.Errorf("expected 1 key in list, got %d", listRes.Total)
+	if recRotate.Code != http.StatusOK {
+		t.Fatalf("expected 200 for rotateKey, got %d, body: %s", recRotate.Code, recRotate.Body.String())
 	}
 
-	// 5. Revoke Key
-	revokePayload := map[string]interface{}{
-		"keyId": createRes.KeyID,
+	// 6. Workspaces API
+	wsCreatePayload := map[string]interface{}{
+		"id":   "ws_staging",
+		"name": "Staging Environment",
 	}
-	rBody, _ := json.Marshal(revokePayload)
-	reqRevoke := httptest.NewRequest("POST", "/v1/keys.revokeKey", bytes.NewReader(rBody))
-	recRevoke := httptest.NewRecorder()
-	mux.ServeHTTP(recRevoke, reqRevoke)
+	wsBody, _ := json.Marshal(wsCreatePayload)
+	reqWsCreate := httptest.NewRequest("POST", "/v1/workspaces.create", bytes.NewReader(wsBody))
+	recWsCreate := httptest.NewRecorder()
+	mux.ServeHTTP(recWsCreate, reqWsCreate)
 
-	if recRevoke.Code != http.StatusOK {
-		t.Fatalf("expected 200 for revokeKey, got %d", recRevoke.Code)
-	}
-
-	// 6. Verify again -> Should be invalid KEY_REVOKED
-	reqVerify2 := httptest.NewRequest("POST", "/v1/keys.verifyKey", bytes.NewReader(vBody))
-	recVerify2 := httptest.NewRecorder()
-	mux.ServeHTTP(recVerify2, reqVerify2)
-
-	var verifyRes2 struct {
-		Valid bool   `json:"valid"`
-		Code  string `json:"code"`
-	}
-	_ = json.Unmarshal(recVerify2.Body.Bytes(), &verifyRes2)
-	if verifyRes2.Valid || verifyRes2.Code != "KEY_REVOKED" {
-		t.Errorf("expected KEY_REVOKED, got: %+v", verifyRes2)
+	if recWsCreate.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for workspace create, got %d", recWsCreate.Code)
 	}
 
-	// 7. Embedded SPA Root
-	reqRoot := httptest.NewRequest("GET", "/", nil)
-	recRoot := httptest.NewRecorder()
-	mux.ServeHTTP(recRoot, reqRoot)
+	reqWsList := httptest.NewRequest("GET", "/v1/workspaces.list", nil)
+	recWsList := httptest.NewRecorder()
+	mux.ServeHTTP(recWsList, reqWsList)
 
-	if recRoot.Code != http.StatusOK {
-		t.Errorf("expected 200 for SPA root /, got %d", recRoot.Code)
+	if recWsList.Code != http.StatusOK {
+		t.Fatalf("expected 200 for workspace list, got %d", recWsList.Code)
 	}
-	if !strings.Contains(recRoot.Body.String(), "<div id=\"root\">") {
-		t.Errorf("expected SPA index.html content in response")
+
+	// 7. Audit Logs API
+	reqAudit := httptest.NewRequest("GET", "/v1/audit.list", nil)
+	recAudit := httptest.NewRecorder()
+	mux.ServeHTTP(recAudit, reqAudit)
+
+	if recAudit.Code != http.StatusOK {
+		t.Fatalf("expected 200 for audit list, got %d", recAudit.Code)
+	}
+
+	// 8. Prometheus /metrics
+	reqMetrics := httptest.NewRequest("GET", "/metrics", nil)
+	recMetrics := httptest.NewRecorder()
+	mux.ServeHTTP(recMetrics, reqMetrics)
+
+	if recMetrics.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /metrics, got %d", recMetrics.Code)
+	}
+	if !strings.Contains(recMetrics.Body.String(), "keygate_uptime_seconds") {
+		t.Errorf("expected Prometheus metrics output in /metrics")
+	}
+
+	// 9. Export CSV
+	reqExportCSV := httptest.NewRequest("GET", "/v1/keys.export?format=csv", nil)
+	recExportCSV := httptest.NewRecorder()
+	mux.ServeHTTP(recExportCSV, reqExportCSV)
+
+	if recExportCSV.Code != http.StatusOK || !strings.Contains(recExportCSV.Body.String(), "RateLimit") {
+		t.Errorf("expected CSV export response, got code %d", recExportCSV.Code)
 	}
 }

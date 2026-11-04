@@ -8,6 +8,7 @@ export interface APIKey {
   rateLimit: number;
   rateDuration: number;
   burst: number;
+  maxUses: number;
   scopes: string[];
   ipAllowlist: string[];
   metadata: Record<string, string>;
@@ -18,6 +19,23 @@ export interface APIKey {
   lastUsedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditLog {
+  id: number;
+  workspaceId: string;
+  actor: string;
+  action: string;
+  targetId: string;
+  details: Record<string, string>;
+  timestamp: string;
 }
 
 export interface CreatedKeyResult {
@@ -31,10 +49,20 @@ export interface CreatedKeyResult {
   rateLimit: number;
   rateDuration: number;
   burst: number;
+  maxUses: number;
   scopes: string[];
   ipAllowlist: string[];
   expiresAt?: string;
   createdAt: string;
+}
+
+export interface RotatedKeyResult {
+  success: boolean;
+  oldKeyId: string;
+  newKeyId: string;
+  newKey: string;
+  gracePeriodHours: number;
+  oldKeyExpiresAt: string;
 }
 
 export interface HourlyBucketData {
@@ -83,6 +111,7 @@ export interface VerifyKeyResult {
   workspaceId?: string;
   name?: string;
   tier?: string;
+  maxUses?: number;
   scopes?: string[];
   rateLimit?: {
     tier: string;

@@ -9,6 +9,7 @@ KeyGate exposes two primary interfaces: an inline reverse proxy gateway and a di
 - Reverse Proxy Gateway: `http://localhost:8000/`
 - Control Plane API: `http://localhost:8000/v1`
 - Studio UI: `http://localhost:8000/` (serves dashboard when accessed via browser)
+- Prometheus Metrics: `http://localhost:8000/metrics`
 
 ---
 
@@ -23,7 +24,7 @@ POST /v1/keys.verifyKey
 Content-Type: application/json
 
 {
-  "key": "sk_live_prod_9F8k2mLx4P1qR5tY7wZ3vA6b",
+  "key": "sk_live_ws_default_9F8k2mLx4P1qR5tY7wZ3vA6b",
   "workspaceId": "ws_default",
   "requiredScopes": ["read:users"]
 }
@@ -53,26 +54,20 @@ Content-Type: application/json
     "limit": 500,
     "remaining": 499,
     "reset": 58
-  }
+  },
+  "cached": true,
+  "durationUs": 211
 }
 ```
 
-### Failure Responses
-
-#### Invalid or Revoked Key (`200 OK` with valid: false)
-
-```json
-{
-  "valid": false,
-  "code": "KEY_REVOKED",
-  "message": "API key has been revoked."
-}
-```
+### Failure Codes
 
 Error codes include:
 - `KEY_NOT_FOUND`: The key does not exist or has an invalid format.
 - `KEY_REVOKED`: The key was explicitly revoked.
 - `KEY_EXPIRED`: The key expiration timestamp has passed.
+- `QUOTA_EXCEEDED`: Lifetime request quota (`maxUses`) has been exhausted.
+- `KEY_DISABLED`: Key has been toggled off administratively.
 - `INSUFFICIENT_SCOPES`: The key lacks one or more required scopes.
 - `IP_FORBIDDEN`: Client IP address is not included in the key allowlist.
 - `RATE_LIMITED`: The key exceeded its sliding window request quota.
@@ -97,57 +92,53 @@ Content-Type: application/json
   "tier": "pro",
   "rateLimit": 500,
   "rateDuration": 60,
+  "maxUses": 100,
   "scopes": ["read:data", "write:logs"],
   "ipAllowlist": ["192.168.1.0/24", "10.0.0.5"],
-  "expiresAt": "2027-01-01T00:00:00Z",
-  "metadata": {
-    "department": "core-infrastructure",
-    "environment": "production"
-  }
+  "expiresAt": "2027-01-01T00:00:00Z"
 }
 ```
 
-#### Response (`201 Created`)
+### Rotate Key (Zero-Downtime)
+
+Issues a replacement key with the same configuration and sets the old key to expire after a specified grace period.
+
+```http
+POST /v1/keys.rotateKey
+Content-Type: application/json
+
+{
+  "keyId": "key_01jh8b2c4e5f6g7h8j9k0l1m",
+  "gracePeriodHours": 24
+}
+```
+
+Response (`200 OK`):
 
 ```json
 {
-  "keyId": "key_01jh8b2c4e5f6g7h8j9k0l1m",
-  "key": "sk_live_ws_default_8F7d6c5b4a3...plaintext",
-  "prefix": "sk_live",
-  "name": "Mobile Client Service",
-  "workspaceId": "ws_default",
-  "ownerId": "usr_102",
-  "tier": "pro",
-  "rateLimit": 500,
-  "rateDuration": 60,
-  "scopes": ["read:data", "write:logs"],
-  "ipAllowlist": ["192.168.1.0/24", "10.0.0.5"],
-  "expiresAt": "2027-01-01T00:00:00Z",
-  "createdAt": "2026-11-04T19:40:00Z"
+  "success": true,
+  "oldKeyId": "key_01jh8b2c4e5f6g7h8j9k0l1m",
+  "newKeyId": "key_02ka9c3d5e6f7g8h9j0k1l2m",
+  "newKey": "sk_live_ws_default_Ka72QFZeuUdrt4cgtMwrZYRbJu6FMmH1u",
+  "gracePeriodHours": 24,
+  "oldKeyExpiresAt": "2026-11-05T20:00:00Z"
 }
+```
+
+### Get Key Details & History
+
+```http
+GET /v1/keys.getKey?id=key_01jh8b2c4e5f6g7h8j9k0l1m
 ```
 
 ### List Keys
 
-Retrieves active and revoked keys.
-
 ```http
-GET /v1/keys.listKeys?workspaceId=ws_default&status=active&search=Mobile&limit=20&offset=0
+GET /v1/keys.listKeys?workspaceId=ws_default&status=active&search=Mobile&limit=50&offset=0
 ```
 
-#### Query Parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `workspaceId` | string | `""` | Filter by workspace ID. |
-| `status` | string | `all` | Filter by status (`active`, `revoked`, `expired`, `all`). |
-| `search` | string | `""` | Search substring against key name, prefix, or owner ID. |
-| `limit` | integer | `50` | Maximum items to return. |
-| `offset` | integer | `0` | Number of items to skip. |
-
 ### Revoke Key
-
-Revokes an API key immediately and invalidates its in-memory cache entry.
 
 ```http
 POST /v1/keys.revokeKey
@@ -158,95 +149,58 @@ Content-Type: application/json
 }
 ```
 
-#### Response (`200 OK`)
+### Export Keys
 
-```json
+Downloadable CSV or JSON dump of keys in a workspace:
+
+```http
+GET /v1/keys.export?workspaceId=ws_default&format=csv
+GET /v1/keys.export?workspaceId=ws_default&format=json
+```
+
+---
+
+## 3. Workspaces & Multi-Tenancy
+
+### List Workspaces
+
+```http
+GET /v1/workspaces.list
+```
+
+### Create Workspace
+
+```http
+POST /v1/workspaces.create
+Content-Type: application/json
+
 {
-  "success": true,
-  "keyId": "key_01jh8b2c4e5f6g7h8j9k0l1m",
-  "revokedAt": "2026-11-04T19:42:15Z"
+  "id": "ws_staging",
+  "name": "Staging Environment"
 }
 ```
 
 ---
 
-## 3. Reverse Proxy Gateway
-
-When KeyGate runs in proxy mode, incoming client traffic passes through port 8000 and is routed to the configured upstream server (for example, `http://localhost:3000`).
-
-### Authentication Headers
-
-Clients provide authentication using standard headers:
+## 4. Security Audit Trail
 
 ```http
-GET /api/v1/users HTTP/1.1
-Host: api.yourcompany.com
-Authorization: Bearer sk_live_ws_default_9F8k2mLx...
+GET /v1/audit.list?workspaceId=ws_default&limit=50&offset=0
 ```
 
-or via:
-
-```http
-GET /api/v1/users HTTP/1.1
-Host: api.yourcompany.com
-X-API-Key: sk_live_ws_default_9F8k2mLx...
-```
-
-### Headers Injected Upstream
-
-When the request is authenticated, KeyGate strips the client API key and injects trusted identity headers:
-
-- `X-KeyGate-Key-Id`: Internal key identifier.
-- `X-KeyGate-Owner-Id`: Owner or tenant ID.
-- `X-KeyGate-Workspace`: Workspace identifier.
-- `X-KeyGate-Scopes`: Comma-separated permissions granted to this key.
-- `X-KeyGate-Tier`: Rate limit tier (`free`, `pro`, `enterprise`, or `custom`).
-
-### Downstream RateLimit Headers (IETF Compliant)
-
-All responses returned to the client include standardized rate limit headers:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-RateLimit-Limit: 500
-RateLimit-Remaining: 482
-RateLimit-Reset: 34
-```
-
-When quota is exhausted:
-
-```http
-HTTP/1.1 429 Too Many Requests
-Content-Type: application/json
-Retry-After: 34
-RateLimit-Limit: 500
-RateLimit-Remaining: 0
-RateLimit-Reset: 34
-
-{
-  "error": "rate_limit_exceeded",
-  "message": "Sliding window rate limit reached. Retry in 34 seconds."
-}
-```
+Returns chronological security logs for key creations, revocations, quota modifications, and key rotations.
 
 ---
 
-## 4. Telemetry & Analytics
-
-### Summary Metrics
+## 5. Prometheus Metrics
 
 ```http
-GET /v1/analytics.summary?workspaceId=ws_default&timeRange=24h
+GET /metrics
 ```
 
-Returns aggregate verifications, latency percentiles (p50, p95, p99), error rates, and volume per tier.
-
-### Live Telemetry Stream (Server-Sent Events)
-
-```http
-GET /v1/analytics.stream
-Accept: text/event-stream
-```
-
-Streams real-time verification and proxy events as JSON messages for live monitoring dashboards.
+Standard Prometheus text exposition format providing:
+- `keygate_uptime_seconds`
+- `keygate_requests_total{status="200|429|401"}`
+- `keygate_active_keys`, `keygate_revoked_keys`
+- `keygate_cache_events_total{result="hit|miss"}`
+- `keygate_verification_latency_ms{quantile="0.5|0.95|0.99|avg"}`
